@@ -1,0 +1,150 @@
+<html>
+
+<head>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <style>
+        .outline {
+            fill: none;
+            stroke: white;
+            stroke-width: 1px;
+        }
+
+        body{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+
+<body>
+    <h1>Distribution patterns of trees in SF neighborhoods</h1>
+    <h3>Xinyi Zhou xz255</h3>
+    <svg id="choropleth" height="800" width="1200"></svg>
+    <script>
+        const svg = d3.select("#choropleth");
+        const mapWidth = svg.attr("width");
+        const mapHeight = svg.attr("height");
+        const requestData = async function () {
+            const sf = await d3.json("SF-Neighborhoods.geo.json");
+            console.log(sf);
+            const trees = await d3.csv("Street_Tree_List-2022-01-30_FILTERED.csv");
+            console.log(trees);
+
+            let counts = {};
+
+            trees.forEach(d => {
+                let species = d.qSpecies;
+                if (counts[species] === undefined) {
+                    counts[species] = 1;
+                } else {
+                    counts[species] += 1;
+                }
+            });
+            console.log(counts);
+
+            // Google searched for how to sort the count 
+            let sortedSpecies = Object.entries(counts)
+                .map(([species, count]) => ({ species, count }))
+                .sort((a, b) => b.count - a.count);
+
+            console.log("Total Tree Count per Species:", sortedSpecies);
+
+            const highest = sortedSpecies.slice(0, 5);
+
+            const colorScale = d3.scaleOrdinal().domain(highest.map(d => d.species))
+                .range(d3.schemeCategory10);
+
+            var neighborhoods = topojson.feature(sf, sf.objects.SFNeighborhoods);
+            console.log(neighborhoods);
+            var neighborhoodsMesh = topojson.mesh(sf, sf.objects.SFNeighborhoods);
+
+            var projection = d3.geoMercator().fitSize([mapWidth, mapHeight], neighborhoods);
+
+            var path = d3.geoPath().projection(projection);
+            console.log(path);
+
+            svg.selectAll("path.neighborhood").data(neighborhoods.features)
+                .join("path")
+                .attr("class", "neighborhood")
+                .attr("d", path)
+                .style("fill", "lightgrey");
+
+            svg.append("path").datum(neighborhoodsMesh)
+                .attr("class", "outline")
+                .attr("d", path);
+
+            function checkHigh(species) {
+                for (let i = 0; i < highest.length; i++) {
+                    if (highest[i].species === species) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            svg.selectAll(".lowCount")
+                .data(trees.filter(d => !checkHigh(d.qSpecies)))
+                .enter().append("circle")
+                .attr("class", "lowCount")
+                .attr("cx", d => projection([d.Longitude, d.Latitude])[0] + Math.random() * 2 - 1)
+                .attr("cy", d => projection([d.Longitude, d.Latitude])[1] + Math.random() * 2 - 1)
+                .attr("r", 1.5)
+                .attr("fill", "gray")
+                .attr("opacity", 0.2);
+
+            svg.selectAll(".highCount")
+                .data(trees.filter(d => checkHigh(d.qSpecies)))
+                .enter().append("circle")
+                .attr("class", "highCount")
+                .attr("cx", d => projection([d.Longitude, d.Latitude])[0] + Math.random() * 2 - 1)
+                .attr("cy", d => projection([d.Longitude, d.Latitude])[1] + Math.random() * 2 - 1)
+                .attr("r", 1.5)
+                .attr("fill", d => colorScale(d.qSpecies))
+                .attr("opacity", 1);
+
+            const legend = svg.append("g")
+                .attr("transform", `translate(920, 300)`);
+
+            const legendItems = legend.selectAll(".legendItem")
+                .data(highest)
+                .enter().append("g")
+                .attr("class", "legendItem")
+                .attr("transform", (d, i) => `translate(0, ${i * 25})`);
+
+            const otherTrees = legend.append("g")
+                .attr("transform", (d, i) => `translate(0, 125)`);
+
+            legendItems.append("rect")
+                .attr("width", 18)
+                .attr("height", 18)
+                .attr("fill", d => colorScale(d.species))
+                .attr("stroke", "black")
+                .attr("stroke-width", 1);
+
+            legendItems.append("text")
+                .attr("x", 25)
+                .attr("y", 14)
+                .style("font-size", "12px")
+                .text(d => d.species);
+
+            otherTrees.append("rect")
+                .attr("width", 18)
+                .attr("height", 18)
+                .attr("fill", "gray")
+                .attr("stroke", "black")
+                .attr("stroke-width", 1)
+                .attr("opacity", 0.2);
+
+            otherTrees.append("text")
+                .attr("x", 25)
+                .attr("y", 14)
+                .style("font-size", "12px")
+                .text("others");
+
+        }
+        requestData();
+    </script>
+</body>
+</head>
